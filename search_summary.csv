@@ -1,0 +1,5 @@
+Model,Best Params,Best CV Score,Test F1 Score,Model File
+Random Forest,"{'model__n_estimators': 500, 'model__min_samples_split': 2, 'model__max_depth': 10}",0.9998602744595312,1.0,models/Random_Forest_best.pkl
+Gradient Boosting,"{'model__n_estimators': 100, 'model__max_depth': 5, 'model__learning_rate': 0.2}",0.9997404871267994,1.0,models/Gradient_Boosting_best.pkl
+KNN,"{'model__weights': 'distance', 'model__n_neighbors': 9}",0.9978239294733567,0.997604377111809,models/KNN_best.pkl
+Logistic Regression,"{'model__solver': 'saga', 'model__penalty': 'l1', 'model__max_iter': 1500, 'model__C': 1}",0.8933824150248242,0.8920526470158108,models/Logistic_Regression_best.pkl
