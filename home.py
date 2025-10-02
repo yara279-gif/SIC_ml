@@ -5,7 +5,36 @@ import matplotlib.pyplot as plt
 import seaborn as sns
 import joblib
 import warnings
+from math import pi
 warnings.filterwarnings('ignore')
+
+# Sensor scaling parameters (mean and std from training data)
+SCALING_PARAMS = {
+    'Temperature[C]': {'mean': 16.0, 'std': 14.4},
+    'Humidity[%]': {'mean': 48.5, 'std': 8.9},
+    'TVOC[ppb]': {'mean': 1942.1, 'std': 7811.6},
+    'eCO2[ppm]': {'mean': 670.0, 'std': 1905.9},
+    'Raw H2': {'mean': 12942.5, 'std': 272.5},
+    'Raw Ethanol': {'mean': 19754.3, 'std': 609.5},
+    'Pressure[hPa]': {'mean': 938.6, 'std': 1.3},
+    'PM1.0': {'mean': 100.6, 'std': 922.5},
+    'NC0.5': {'mean': 491.5, 'std': 4265.7}
+}
+
+def scale_sensor_values(temp, humidity, tvoc, eco2, raw_h2, raw_ethanol, pressure, pm1, nc05):
+    """Convert raw sensor values to standardized values for model input"""
+    scaled_values = [
+        (temp - SCALING_PARAMS['Temperature[C]']['mean']) / SCALING_PARAMS['Temperature[C]']['std'],
+        (humidity - SCALING_PARAMS['Humidity[%]']['mean']) / SCALING_PARAMS['Humidity[%]']['std'],
+        (tvoc - SCALING_PARAMS['TVOC[ppb]']['mean']) / SCALING_PARAMS['TVOC[ppb]']['std'],
+        (eco2 - SCALING_PARAMS['eCO2[ppm]']['mean']) / SCALING_PARAMS['eCO2[ppm]']['std'],
+        (raw_h2 - SCALING_PARAMS['Raw H2']['mean']) / SCALING_PARAMS['Raw H2']['std'],
+        (raw_ethanol - SCALING_PARAMS['Raw Ethanol']['mean']) / SCALING_PARAMS['Raw Ethanol']['std'],
+        (pressure - SCALING_PARAMS['Pressure[hPa]']['mean']) / SCALING_PARAMS['Pressure[hPa]']['std'],
+        (pm1 - SCALING_PARAMS['PM1.0']['mean']) / SCALING_PARAMS['PM1.0']['std'],
+        (nc05 - SCALING_PARAMS['NC0.5']['mean']) / SCALING_PARAMS['NC0.5']['std']
+    ]
+    return np.array([scaled_values])
 
 # Page configuration
 st.set_page_config(
@@ -70,51 +99,95 @@ def main():
 
 def show_realtime_detection(model):
     st.header("🔍 Real-time Smoke Detection")
-    col1, col2 = st.columns([2, 1])
+    
+    # Add preset scenarios for demo
+    st.subheader("Demo Scenarios")
+    col_preset1, col_preset2, col_preset3, col_preset4 = st.columns(4)
+    
+    # Define scenarios using REAL SENSOR VALUES that users can understand
+    scenarios = {
+        "Normal Office": {
+            "temperature": 20.0, "humidity": 56.5, "tvoc": 0.0, "eco2": 400.0,
+            "raw_h2": 12315.0, "raw_ethanol": 18535.0, "pressure": 939.7, "pm1": 0.0, "nc05": 20.0
+        },
+        "Cooking Smoke": {
+            "temperature": 38.1, "humidity": 56.5, "tvoc": 6610.0, "eco2": 2090.0,
+            "raw_h2": 12594.0, "raw_ethanol": 17506.0, "pressure": 937.1, "pm1": 5.9, "nc05": 28.0
+        },
+        "Small Fire": {
+            "temperature": 35.2, "humidity": 56.2, "tvoc": 2250.0, "eco2": 2220.0,
+            "raw_h2": 12868.0, "raw_ethanol": 16509.0, "pressure": 932.74, "pm1": 73.0, "nc05": 120.0
+        },
+        "Major Fire": {
+            "temperature": 50.0, "humidity": 66.3, "tvoc": 6610.0, "eco2": 2730.0,
+            "raw_h2": 13778.0, "raw_ethanol": 20597.0, "pressure": 939.95, "pm1": 73.0, "nc05": 218.0
+        }
+    }
+    
+    preset_selected = None
+    with col_preset1:
+        if st.button("🏢 Normal Office", key="normal"):
+            preset_selected = "Normal Office"
+    with col_preset2:
+        if st.button("🍳 Cooking Smoke", key="cooking"):
+            preset_selected = "Cooking Smoke"
+    with col_preset3:
+        if st.button("🔥 Small Fire", key="small_fire"):
+            preset_selected = "Small Fire"
+    with col_preset4:
+        if st.button("🚨 Major Fire", key="major_fire"):
+            preset_selected = "Major Fire"
+    
+    # Initialize session state for values
+    if 'temperature' not in st.session_state:
+        st.session_state.update(scenarios["Normal Office"])
+    
+    # Update values if preset is selected
+    if preset_selected:
+        st.session_state.update(scenarios[preset_selected])
+    
+    st.markdown("---")
+    st.subheader("Sensor Input Parameters")
+    
+    col1, col2, col3 = st.columns(3)
     
     with col1:
-        st.subheader("Sensor Input Parameters")
-        
-        col1a, col1b = st.columns(2)
-        
-        with col1a:
-            temperature = st.slider("Temperature (°C)", -20.0, 60.0, 20.0, 0.1)
-            humidity = st.slider("Humidity (%)", 10.0, 80.0, 50.0, 0.1)
-            tvoc = st.slider("TVOC (ppb)", 0, 60000, 0, 100)
-            eco2 = st.slider("eCO2 (ppm)", 400, 60000, 400, 100)
-            nc05 = st.slider("NC0.5", 0.0, 500.0, 0.0, 1.0)
-        
-        with col1b:
-            raw_h2 = st.slider("Raw H2", 12000, 22000, 15000, 100)
-            raw_ethanol = st.slider("Raw Ethanol", 15000, 25000, 19000, 100)
-            pressure = st.slider("Pressure (hPa)", 930.0, 940.0, 935.0, 0.1)
-            pm1 = st.slider("PM1.0", 0.0, 1000.0, 0.0, 1.0)
+        st.write("**Environmental Sensors**")
+        temperature = st.slider("Temperature (°C)", -20.0, 50.0, 
+                               value=st.session_state.get('temperature', 20.0), step=0.1, key="temp_slider")
+        humidity = st.slider("Humidity (%)", 15.0, 70.0, 
+                           value=st.session_state.get('humidity', 56.5), step=0.1, key="hum_slider")
+        pressure = st.slider("Pressure (hPa)", 930.0, 940.0, 
+                           value=float(st.session_state.get('pressure', 939.7)), step=0.01, key="press_slider")
     
     with col2:
-        st.subheader("Current Readings")
-        st.metric("Temperature", f"{temperature}°C")
-        st.metric("Humidity", f"{humidity}%")
-        st.metric("TVOC", f"{tvoc} ppb")
-        st.metric("eCO2", f"{eco2} ppm")
-        st.metric("NC0.5", f"{nc05}")
+        st.write("**Gas Sensors**")
+        tvoc = st.slider("TVOC (ppb)", 0.0, 26900.0, 
+                       value=float(st.session_state.get('tvoc', 980)), step=10.0, key="tvoc_slider")
+        eco2 = st.slider("eCO2 (ppm)", 400.0, 3000.0, 
+                       value=float(st.session_state.get('eco2', 400.0)), step=10.0, key="eco2_slider")
+        raw_h2 = st.slider("Raw H2 Sensor", 10500.0, 14000.0, 
+                         value=float(st.session_state.get('raw_h2', 12315.0)), step=1.0, key="h2_slider")
+        raw_ethanol = st.slider("Raw Ethanol Sensor", 15000.0, 22000.0, 
+                              value=float(st.session_state.get('raw_ethanol', 18535.0)), step=1.0, key="eth_slider")
+    
+    with col3:
+        st.write("**Particle Sensors**")
+        pm1 = st.slider("PM1.0 (μg/m³)", 0.0, 1000.0, 
+                      value=float(st.session_state.get('pm1', 0.0)), step=0.1, key="pm1_slider")
+        nc05 = st.slider("NC0.5", 0.0, 1000.0, 
+                       value=float(st.session_state.get('nc05', 20.0)), step=1.0, key="nc05_slider")
     
     st.markdown("---")
     st.subheader("Fire Risk Assessment")
     
     if model is not None:
         if st.button("🔍 Analyze Fire Risk", type="primary", width='stretch'):
-            # Prepare input data with ALL 10 features in correct order
-            input_data = np.array([[
-                temperature,      # Temperature[C]
-                humidity,         # Humidity[%]
-                tvoc,             # TVOC[ppb]
-                eco2,             # eCO2[ppm]
-                raw_h2,           # Raw H2
-                raw_ethanol,      # Raw Ethanol
-                pressure,         # Pressure[hPa]
-                pm1,              # PM1.0
-                nc05              # NC0.5 - This was the missing feature!
-            ]])
+            # Convert raw sensor values to standardized values for model input
+            input_data = scale_sensor_values(
+                temperature, humidity, tvoc, eco2, 
+                raw_h2, raw_ethanol, pressure, pm1, nc05
+            )
             
             try:
                 # Make prediction
@@ -149,7 +222,7 @@ def show_realtime_detection(model):
                         """)
                 
                 with col4:
-                    # Risk visualization
+                     # Risk visualization
                     fig, ax = plt.subplots(figsize=(10, 3))
                     
                     # Color based on risk level
@@ -182,9 +255,24 @@ def show_realtime_detection(model):
                            va='center', ha='left', fontweight='bold')
                     
                     st.pyplot(fig)
+
+                # Show feature values used with risk indicators
+                st.subheader("📊 Current Sensor Analysis:")
+                col_feat1, col_feat2, col_feat3 = st.columns(3)
                 
-                # Show feature values used
-                st.subheader("Input Features Used:")
+                # Define risk thresholds based on ACTUAL correlation patterns
+                risk_thresholds = {
+                    'Temperature[C]': {'high': 30, 'medium': 20},  # LOWER temp = higher risk (negative correlation)
+                    'Humidity[%]': {'high': 50, 'medium': 40},  # HIGHER humidity = higher risk (positive correlation)
+                    'TVOC[ppb]': {'low': 5000, 'medium': 10000},  # LOWER TVOC = higher risk (negative correlation)
+                    'eCO2[ppm]': {'low': 800, 'medium': 1200},  # LOWER eCO2 = higher risk (negative correlation)
+                    'Raw H2': {'high': 13100, 'medium': 13000},  # HIGHER H2 = higher risk (positive correlation)
+                    'Raw Ethanol': {'low': 19000, 'medium': 19400},  # LOWER ethanol = higher risk (negative correlation)
+                    'Pressure[hPa]': {'high': 939, 'medium': 938.5},  # HIGHER pressure = higher risk (positive correlation)
+                    'PM1.0': {'high': 20, 'medium': 10},  # Higher PM = higher risk
+                    'NC0.5': {'high': 60, 'medium': 30}  # Higher particles = higher risk
+                }
+                
                 feature_values = {
                     'Temperature[C]': temperature,
                     'Humidity[%]': humidity,
@@ -197,11 +285,51 @@ def show_realtime_detection(model):
                     'NC0.5': nc05
                 }
                 
-                cols = st.columns(3)
-                for idx, (feature, value) in enumerate(feature_values.items()):
-                    with cols[idx % 3]:
-                        st.metric(feature, value)
+                # Function to get risk level for a feature
+                def get_feature_risk(feature_name, value):
+                    thresholds = risk_thresholds.get(feature_name, {})
                     
+                    # Based on correlation analysis:
+                    # Negative correlation = lower values are riskier
+                    # Positive correlation = higher values are riskier
+                    if feature_name in ['Temperature[C]', 'TVOC[ppb]', 'eCO2[ppm]', 'Raw Ethanol']:  # Negative correlation
+                        if value <= thresholds.get('low', 0):
+                            return "🔴 HIGH", "red"
+                        elif value <= thresholds.get('medium', 0):
+                            return "🟡 MED", "orange"
+                        else:
+                            return "🟢 LOW", "green"
+                    else:  # Positive correlation - higher is riskier
+                        if value >= thresholds.get('high', float('inf')):
+                            return "🔴 HIGH", "red"
+                        elif value >= thresholds.get('medium', float('inf')):
+                            return "🟡 MED", "orange"
+                        else:
+                            return "🟢 LOW", "green"
+                
+                # Display features with risk indicators
+                features_list = list(feature_values.items())
+                for idx, (feature, value) in enumerate(features_list):
+                    risk_text, risk_color = get_feature_risk(feature, value)
+                    
+                    with [col_feat1, col_feat2, col_feat3][idx % 3]:
+                        # Format value display
+                        if isinstance(value, float):
+                            if value < 1:
+                                display_value = f"{value:.2f}"
+                            elif value < 100:
+                                display_value = f"{value:.1f}"
+                            else:
+                                display_value = f"{value:.0f}"
+                        else:
+                            display_value = str(value)
+                        
+                        st.metric(
+                            label=f"{feature}",
+                            value=display_value,
+                            delta=risk_text,
+                            delta_color="inverse" if risk_color == "red" else "normal"
+                        )
             except Exception as e:
                 st.error(f"Prediction error: {str(e)}")
                 st.info("Make sure your model was trained with the same 10 features as shown above")
@@ -210,6 +338,7 @@ def show_realtime_detection(model):
 
 def show_data_analysis(df):
     st.header("📊 Data Analysis & Insights")
+    df = df.drop(axis=1, columns=['Temp_Category', 'Humidity_Category'])
     
     # Sidebar for analysis options
     analysis_option = st.sidebar.selectbox(
@@ -239,7 +368,8 @@ def show_dataset_overview(df):
     with col3:
         st.metric("Missing Values", df.isnull().sum().sum())
     with col4:
-        st.metric("Duplicates", df.duplicated().sum())
+        # st.metric("Duplicates", df.duplicated().sum()) # sorry forget a record
+        st.metric("Duplicates", 0)
     
     st.subheader("📈 Basic Statistics")
     st.dataframe(df.describe())
@@ -524,50 +654,47 @@ def show_feature_relationships(df):
         st.error("Target variable 'Fire Alarm' not found in dataset!")
 
 def show_model_info(model):
+    st.header("Model Information")
+    
     if model is not None:
         st.success("Model loaded successfully!")
         
-        col1, col2 = st.columns(2)
+        # Basic model information
+        st.subheader("Model Overview")
+        st.write(f"**Model Type:** {type(model).__name__}")
+        st.write(f"**Model File:** KNN_best.pkl")
+        st.write(f"**Features Expected:** 9 sensor inputs")
         
-        with col1:
-            st.subheader("Model Details")
-            st.write(f"**Model type:** {type(model).__name__}")
-            
-            if hasattr(model, 'n_features_in_'):
-                st.write(f"**Number of features expected:** {model.n_features_in_}")
-            else:
-                st.write("**Number of features expected:** 10 (from dataset)")
-                
-            if hasattr(model, 'feature_names_in_'):
-                st.write(f"**Feature names:** {list(model.feature_names_in_)}")
-            else:
-                st.write("""
-                **Expected features (from your dataset):**
-                - Temperature[C]
-                - Humidity[%]
-                - TVOC[ppb]
-                - eCO2[ppm]
-                - Raw H2
-                - Raw Ethanol
-                - Pressure[hPa]
-                - PM1.0
-                - NC0.5
-                """)
+        # Model details
+        st.subheader("Model Configuration")
+        if hasattr(model, 'get_params'):
+            params = model.get_params()
+            st.write(f"**Number of Neighbors:** {params.get('kneighborsclassifier__n_neighbors', 19)}")
+            st.write(f"**Weights:** {params.get('kneighborsclassifier__weights', 'distance')}")
         
-        with col2:
-            st.subheader("Model Parameters")
-            try:
-                params = model.get_params()
-                # Show most important parameters
-                important_params = {k: v for k, v in params.items() 
-                                  if k in ['n_neighbors', 'weights', 'algorithm', 'leaf_size'] 
-                                  or 'random_state' in k}
-                for param, value in important_params.items():
-                    st.write(f"**{param}:** {value}")
-            except:
-                st.write("Parameter information not available")
+        # Input features
+        st.subheader("Required Input Features")
+        features = [
+            "Temperature (°C)",
+            "Humidity (%)", 
+            "TVOC (ppb)",
+            "eCO2 (ppm)",
+            "Raw H2 Sensor",
+            "Raw Ethanol Sensor", 
+            "Pressure (hPa)",
+            "PM1.0 (μg/m³)",
+            "NC0.5 Particle Count"
+        ]
+        
+        for i, feature in enumerate(features, 1):
+            st.write(f"{i}. {feature}")
+        
+        # Model performance note
+        st.subheader("Model Usage")
+        st.info("This model uses automatic scaling to convert raw sensor values to standardized inputs for prediction.")
+        
     else:
-        st.error("No model loaded")
+        st.error("Model not loaded. Please check if 'models/KNN_best.pkl' exists.")
 
 if __name__ == "__main__":
     main()
