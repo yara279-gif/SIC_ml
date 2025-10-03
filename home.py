@@ -8,32 +8,45 @@ import warnings
 from math import pi
 warnings.filterwarnings('ignore')
 
-# Sensor scaling parameters (mean and std from training data)
-SCALING_PARAMS = {
-    'Temperature[C]': {'mean': 16.0, 'std': 14.4},
-    'Humidity[%]': {'mean': 48.5, 'std': 8.9},
-    'TVOC[ppb]': {'mean': 1942.1, 'std': 7811.6},
-    'eCO2[ppm]': {'mean': 670.0, 'std': 1905.9},
-    'Raw H2': {'mean': 12942.5, 'std': 272.5},
-    'Raw Ethanol': {'mean': 19754.3, 'std': 609.5},
-    'Pressure[hPa]': {'mean': 938.6, 'std': 1.3},
-    'PM1.0': {'mean': 100.6, 'std': 922.5},
-    'NC0.5': {'mean': 491.5, 'std': 4265.7}
+# Mixed scaling parameters (RobustScaler for outliers + StandardScaler for regular features)
+ROBUST_SCALER_PARAMS = {
+    # Outlier-prone features (use RobustScaler: median and scale)
+    'TVOC[ppb]': {'median': 981.00, 'scale': 1059.00},
+    'eCO2[ppm]': {'median': 400.00, 'scale': 38.00},
+    'PM1.0': {'median': 1.81, 'scale': 0.81},
+    'NC0.5': {'median': 12.45, 'scale': 5.60}
+}
+
+STANDARD_SCALER_PARAMS = {
+    # Regular features (use StandardScaler: mean and std)
+    'Temperature[C]': {'mean': 15.97, 'std': 14.36},
+    'Humidity[%]': {'mean': 48.54, 'std': 8.87},
+    'Raw H2': {'mean': 12942.45, 'std': 272.46},
+    'Raw Ethanol': {'mean': 19754.26, 'std': 609.51},
+    'Pressure[hPa]': {'mean': 938.63, 'std': 1.33}
 }
 
 def scale_sensor_values(temp, humidity, tvoc, eco2, raw_h2, raw_ethanol, pressure, pm1, nc05):
-    """Convert raw sensor values to standardized values for model input"""
-    scaled_values = [
-        (temp - SCALING_PARAMS['Temperature[C]']['mean']) / SCALING_PARAMS['Temperature[C]']['std'],
-        (humidity - SCALING_PARAMS['Humidity[%]']['mean']) / SCALING_PARAMS['Humidity[%]']['std'],
-        (tvoc - SCALING_PARAMS['TVOC[ppb]']['mean']) / SCALING_PARAMS['TVOC[ppb]']['std'],
-        (eco2 - SCALING_PARAMS['eCO2[ppm]']['mean']) / SCALING_PARAMS['eCO2[ppm]']['std'],
-        (raw_h2 - SCALING_PARAMS['Raw H2']['mean']) / SCALING_PARAMS['Raw H2']['std'],
-        (raw_ethanol - SCALING_PARAMS['Raw Ethanol']['mean']) / SCALING_PARAMS['Raw Ethanol']['std'],
-        (pressure - SCALING_PARAMS['Pressure[hPa]']['mean']) / SCALING_PARAMS['Pressure[hPa]']['std'],
-        (pm1 - SCALING_PARAMS['PM1.0']['mean']) / SCALING_PARAMS['PM1.0']['std'],
-        (nc05 - SCALING_PARAMS['NC0.5']['mean']) / SCALING_PARAMS['NC0.5']['std']
-    ]
+    """Convert raw sensor values to properly scaled values for model input using mixed scaling"""
+    scaled_values = []
+    
+    # Apply StandardScaler to regular features
+    scaled_values.append((temp - STANDARD_SCALER_PARAMS['Temperature[C]']['mean']) / STANDARD_SCALER_PARAMS['Temperature[C]']['std'])
+    scaled_values.append((humidity - STANDARD_SCALER_PARAMS['Humidity[%]']['mean']) / STANDARD_SCALER_PARAMS['Humidity[%]']['std'])
+    
+    # Apply RobustScaler to outlier-prone features  
+    scaled_values.append((tvoc - ROBUST_SCALER_PARAMS['TVOC[ppb]']['median']) / ROBUST_SCALER_PARAMS['TVOC[ppb]']['scale'])
+    scaled_values.append((eco2 - ROBUST_SCALER_PARAMS['eCO2[ppm]']['median']) / ROBUST_SCALER_PARAMS['eCO2[ppm]']['scale'])
+    
+    # Apply StandardScaler to remaining regular features
+    scaled_values.append((raw_h2 - STANDARD_SCALER_PARAMS['Raw H2']['mean']) / STANDARD_SCALER_PARAMS['Raw H2']['std'])
+    scaled_values.append((raw_ethanol - STANDARD_SCALER_PARAMS['Raw Ethanol']['mean']) / STANDARD_SCALER_PARAMS['Raw Ethanol']['std'])
+    scaled_values.append((pressure - STANDARD_SCALER_PARAMS['Pressure[hPa]']['mean']) / STANDARD_SCALER_PARAMS['Pressure[hPa]']['std'])
+    
+    # Apply RobustScaler to remaining outlier-prone features
+    scaled_values.append((pm1 - ROBUST_SCALER_PARAMS['PM1.0']['median']) / ROBUST_SCALER_PARAMS['PM1.0']['scale'])
+    scaled_values.append((nc05 - ROBUST_SCALER_PARAMS['NC0.5']['median']) / ROBUST_SCALER_PARAMS['NC0.5']['scale'])
+    
     return np.array([scaled_values])
 
 # Page configuration
@@ -45,9 +58,21 @@ st.set_page_config(
 
 @st.cache_resource
 def load_model():
-    """Load the trained smoke detection model"""
+    """Load the trained smoke detection model with mixed scaling"""
     try:
-        model = joblib.load('models/KNN_best.pkl')
+        # Load the model package (includes model + scalers)
+        model_package = joblib.load('models/KNN_best.pkl')
+        
+        # Handle both old format (just model) and new format (model + scalers)
+        if isinstance(model_package, dict):
+            model = model_package['model']
+            robust_scaler = model_package.get('robust_scaler')
+            standard_scaler = model_package.get('standard_scaler')
+        else:
+            # Old format - just the model
+            model = model_package
+            st.warning("⚠️ Using legacy model format - manual scaling applied")
+        
         return model
     except FileNotFoundError:
         st.error("Model file not found. Please ensure 'models/KNN_best.pkl' exists.")
@@ -55,25 +80,6 @@ def load_model():
     except Exception as e:
         st.error(f"Error loading model: {str(e)}")
         return None
-
-def generate_sample_data():
-    """Generate sample sensor data matching your dataset structure"""
-    np.random.seed(42)
-    sample_size = 1000
-    
-    sample_data = {
-        'Temperature[C]': np.random.normal(20, 10, sample_size),
-        'Humidity[%]': np.random.normal(50, 10, sample_size),
-        'TVOC[ppb]': np.random.exponential(1000, sample_size),
-        'eCO2[ppm]': np.random.exponential(500, sample_size),
-        'Raw H2': np.random.normal(15000, 2000, sample_size),
-        'Raw Ethanol': np.random.normal(19000, 2000, sample_size),
-        'Pressure[hPa]': np.random.normal(935, 2, sample_size),
-        'PM1.0': np.random.exponential(100, sample_size),
-        'NC0.5': np.random.exponential(50, sample_size),
-        'Fire Alarm': np.random.choice([0, 1], sample_size, p=[0.9, 0.1])
-    }
-    return pd.DataFrame(sample_data)
 
 def main():
     st.title("🔥 AI Smoke Detection System")
@@ -107,20 +113,20 @@ def show_realtime_detection(model):
     # Define scenarios using REAL SENSOR VALUES that users can understand
     scenarios = {
         "Normal Office": {
-            "temperature": 20.0, "humidity": 56.5, "tvoc": 0.0, "eco2": 400.0,
-            "raw_h2": 12315.0, "raw_ethanol": 18535.0, "pressure": 939.7, "pm1": 0.0, "nc05": 20.0
+            "temperature": 27.40, "humidity": 39.0, "tvoc": 0.0, "eco2": 400.0,
+            "raw_h2": 12067.0, "raw_ethanol": 17958.0, "pressure": 931.89, "pm1": 0.0, "nc05": 20.0
         },
         "Cooking Smoke": {
-            "temperature": 38.1, "humidity": 56.5, "tvoc": 6610.0, "eco2": 2090.0,
-            "raw_h2": 12594.0, "raw_ethanol": 17506.0, "pressure": 937.1, "pm1": 5.9, "nc05": 28.0
+            "temperature": 32.20, "humidity": 59.7, "tvoc": 6580.0, "eco2": 850.0,
+            "raw_h2": 11170.0, "raw_ethanol": 16399.0, "pressure": 934.45, "pm1": 168.7, "nc05": 127.0
         },
         "Small Fire": {
-            "temperature": 35.2, "humidity": 56.2, "tvoc": 2250.0, "eco2": 2220.0,
-            "raw_h2": 12868.0, "raw_ethanol": 16509.0, "pressure": 932.74, "pm1": 73.0, "nc05": 120.0
+            "temperature": 44.10, "humidity": 59.9, "tvoc": 13910.0, "eco2": 2220.0,
+            "raw_h2": 11979.0, "raw_ethanol": 18972.0, "pressure": 935.54, "pm1": 341.3, "nc05": 272.0
         },
         "Major Fire": {
-            "temperature": 50.0, "humidity": 66.3, "tvoc": 6610.0, "eco2": 2730.0,
-            "raw_h2": 13778.0, "raw_ethanol": 20597.0, "pressure": 939.95, "pm1": 73.0, "nc05": 218.0
+            "temperature": 38.10, "humidity": 56.5, "tvoc": 6610.0, "eco2": 2090.0,
+            "raw_h2": 12594.0, "raw_ethanol": 17506.0, "pressure": 937.10, "pm1": 21.2, "nc05": 13.0
         }
     }
     
@@ -689,9 +695,16 @@ def show_model_info(model):
         for i, feature in enumerate(features, 1):
             st.write(f"{i}. {feature}")
         
-        # Model performance note
+        # Model usage note
+        st.subheader("🔧 Scaling & Preprocessing")
+        st.info("This model uses **Mixed Scaling** for optimal performance:")
+        st.write("**RobustScaler** (outlier-resistant):")
+        st.write("• TVOC[ppb], eCO2[ppm], PM1.0, NC0.5")
+        st.write("**StandardScaler** (traditional):")
+        st.write("• Temperature[C], Humidity[%], Raw H2, Raw Ethanol, Pressure[hPa]")
+        
         st.subheader("Model Usage")
-        st.info("This model uses automatic scaling to convert raw sensor values to standardized inputs for prediction.")
+        st.info("This model automatically applies mixed scaling to convert raw sensor values to standardized inputs for prediction.")
         
     else:
         st.error("Model not loaded. Please check if 'models/KNN_best.pkl' exists.")
