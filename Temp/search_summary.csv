@@ -1,0 +1,9 @@
+Model,Best Params,Best CV Score,Test F1 Score,Test Accuracy,Test AUC,Model File
+Gradient Boosting,"{'model__subsample': 1.0, 'model__n_estimators': 100, 'model__max_depth': 5, 'model__learning_rate': 0.2}",0.9997604635823969,1.0,1.0,0.9999999999999999,models/Gradient_Boosting_best.pkl
+Decision Tree,"{'model__min_samples_split': 2, 'model__min_samples_leaf': 1, 'model__max_depth': 10, 'model__criterion': 'entropy'}",0.999740523229578,1.0,1.0,1.0,models/Decision_Tree_best.pkl
+Random Forest,"{'model__n_estimators': 500, 'model__min_samples_split': 5, 'model__min_samples_leaf': 2, 'model__max_depth': None}",0.9997405002506587,0.9998403321092129,0.9998403321092129,0.9999999374996582,models/Random_Forest_best.pkl
+SVM,"{'model__kernel': 'rbf', 'model__gamma': 'auto', 'model__C': 100}",0.9996407211592281,0.999600847033726,0.9996008302730321,0.9999684998277334,models/SVM_best.pkl
+AdaBoost,"{'model__n_estimators': 200, 'model__learning_rate': 1.0, 'model__algorithm': 'SAMME'}",0.9995009804374829,0.9994411389045984,0.9994411623822449,0.9999982187402587,models/AdaBoost_best.pkl
+KNN,"{'model__weights': 'distance', 'model__n_neighbors': 19, 'model__metric': 'manhattan'}",0.9985423050229503,0.9985623838034904,0.9985629889829155,0.9998498741789995,models/KNN_best.pkl
+Logistic Regression,"{'model__solver': 'saga', 'model__penalty': 'l2', 'model__l1_ratio': 0.7, 'model__C': 1}",0.8942832230097754,0.8931361795101884,0.8950183618074405,0.9635969571708594,models/Logistic_Regression_best.pkl
+Naive Bayes,{'model__var_smoothing': 1e-09},0.727845666922746,0.7347742902156525,0.7764649528979722,0.9360951192701834,models/Naive_Bayes_best.pkl
